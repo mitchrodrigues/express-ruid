@@ -160,6 +160,101 @@ describe('request id in header, prefix reset', function () {
         await supertest(app).get('/').set(headerName, headerValue).expect(200);
     });
 
+    it('should ignore incoming "request-id" header when ignoreIncomingHeader is true', async function () {
+        const headerName = 'request-id';
+        const headerValue = 'fake-request-id';
+        const app = express();
+        app.use(ruid({ ignoreIncomingHeader: true }));
+        app.get('/', function (req, res) {
+            expect(req).exists;
+            expect(req.headers).toHaveProperty(headerName);
+            expect(req.header(headerName)).toBe(headerValue);
+            expect(req.rid).exists;
+            // req.rid should NOT equal the header value, it should be generated
+            expect(req.rid).not.toBe(headerValue);
+            // req.rid should match the generated pattern
+            expect(req.rid).toMatch(new RegExp(os.hostname(), 'gi'));
+            res.send('it works');
+        });
+
+        await supertest(app).get('/').set(headerName, headerValue).expect(200);
+    });
+
+    it('should use incoming "request-id" header when ignoreIncomingHeader is false (default)', async function () {
+        const headerName = 'request-id';
+        const headerValue = 'fake-request-id';
+        const app = express();
+        app.use(ruid({ ignoreIncomingHeader: false }));
+        app.get('/', function (req, res) {
+            expect(req).exists;
+            expect(req.headers).toHaveProperty(headerName);
+            expect(req.header(headerName)).toBe(headerValue);
+            expect(req.rid).exists;
+            expect(req.rid).toBe(headerValue);
+            res.send('it works');
+        });
+
+        await supertest(app).get('/').set(headerName, headerValue).expect(200);
+    });
+
+    it('should use incoming custom header when ignoreIncomingHeader is false', async function () {
+        const headerName = 'X-Custom-Id';
+        const headerValue = 'custom-fake-id';
+        const app = express();
+        app.use(ruid({ 
+            header: headerName, 
+            attribute: 'customId',
+            ignoreIncomingHeader: false 
+        }));
+        app.get('/', function (req, res) {
+            expect(req).exists;
+            expect(req.headers).toHaveProperty(headerName.toLowerCase());
+            expect(req.header(headerName)).toBe(headerValue);
+            expect(req.customId).exists;
+            expect(req.customId).toBe(headerValue);
+            res.send('it works');
+        });
+
+        await supertest(app).get('/').set(headerName, headerValue).expect(200);
+    });
+
+    it('should ignore incoming custom header when ignoreIncomingHeader is true', async function () {
+        const headerName = 'X-Custom-Id';
+        const headerValue = 'custom-fake-id';
+        const app = express();
+        app.use(ruid({ 
+            header: headerName, 
+            attribute: 'customId',
+            ignoreIncomingHeader: true 
+        }));
+        app.get('/', function (req, res) {
+            expect(req).exists;
+            expect(req.headers).toHaveProperty(headerName.toLowerCase());
+            expect(req.header(headerName)).toBe(headerValue);
+            expect(req.customId).exists;
+            // req.customId should NOT equal the header value, it should be generated
+            expect(req.customId).not.toBe(headerValue);
+            // req.customId should match the generated pattern
+            expect(req.customId).toMatch(new RegExp(os.hostname(), 'gi'));
+            res.send('it works');
+        });
+
+        await supertest(app).get('/').set(headerName, headerValue).expect(200);
+    });
+
+    it('should generate new id when no header is present and ignoreIncomingHeader is true', async function () {
+        const app = express();
+        app.use(ruid({ ignoreIncomingHeader: true }));
+        app.get('/', function (req, res) {
+            expect(req).exists;
+            expect(req.rid).exists;
+            expect(req.rid).toMatch(new RegExp(os.hostname(), 'gi'));
+            res.send('it works');
+        });
+
+        await supertest(app).get('/').expect(200);
+    });
+
     it('should reset id prefix (idMax = 2)', async function () {
         const prefixUniquePart = (rid) => {
             return rid.substring(
@@ -202,7 +297,6 @@ describe('request id in header, prefix reset', function () {
 /////////////////////////
 
 describe('request id in httpContext', function () {
-
     it('should have rid in httpContext', async function () {
         const app = express();
         const httpContext = require('express-http-context');
@@ -226,8 +320,6 @@ describe('request id in httpContext', function () {
         app.get('/', function (req, res) {
             expect(req).exists;
             expect(httpContext).exists;
-            console.log('req.requestId: ' + req.requestId);
-            console.log('in context: ' + httpContext.get("requestId"));
             expect(httpContext.get('requestId')).toBe(req.requestId);
             res.send('it works');
         });
